@@ -14,6 +14,13 @@ from requests.packages.urllib3.util.retry import Retry
 import time
 import random
 import threading
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from stem import Signal
+from stem.control import Controller
 
 class WebsiteScraper:
     def __init__(self, base_url: str, output_dir: str, proxies: List[str] = None):
@@ -145,6 +152,19 @@ class WebsiteScraper:
         
         try:
             response = self.session.get(url, timeout=10, proxies=self.get_proxy())
+            if response.status_code == 403:
+                # Try different headers to bypass 403
+                headers = {
+                    'User-Agent': self.user_agent.random,
+                    'Referer': self.base_url,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1'
+                }
+                response = self.session.get(url, timeout=10, proxies=self.get_proxy(), headers=headers)
+            
             if response.status_code != 200:
                 print(f"Failed to download {url}: Status code {response.status_code}")
                 return False
@@ -322,6 +342,59 @@ class WebsiteScraper:
             self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
             return {'http': proxy, 'https': proxy}
         return None
+
+    def download_with_selenium(self, url: str, directory: str = None) -> bool:
+        if url in self.visited_urls:
+            return False
+        
+        self.visited_urls.add(url)
+        
+        try:
+            chrome_options = Options()
+            chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument(f"user-agent={self.user_agent.random}")
+            
+            driver = webdriver.Chrome(options=chrome_options)
+            driver.get(url)
+            
+            WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'body')))
+            
+            content = driver.page_source
+            content_type = driver.execute_script("return document.contentType")
+            
+            driver.quit()
+            
+            if directory is None:
+                directory = self.determine_directory(url, content_type)
+
+            filename = os.path.basename(urlparse(url).path)
+            if not filename:
+                ext = self.get_file_extension(url, content_type)
+                filename = f"file_{len(self.visited_urls)}{ext}"
+
+            filepath = os.path.join(directory, filename)
+            
+            mode = 'wb' if 'text' not in content_type else 'w'
+            with open(filepath, mode, encoding='utf-8' if mode == 'w' else None) as f:
+                if mode == 'w':
+                    f.write(content)
+                else:
+                    f.write(content.encode('utf-8'))
+                    
+            print(f"Downloaded: {filename}")
+            return True
+            
+        except Exception as e:
+            print(f"Error downloading {url}: {e}")
+            return False
+
+    def change_tor_ip(self):
+        with Controller.from_port(port=9051) as controller:
+            controller.authenticate(password='your_password')
+            controller.signal(Signal.NEWNYM)
 
 class ScraperUI:
     def __init__(self, root):
