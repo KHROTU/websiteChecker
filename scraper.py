@@ -130,7 +130,7 @@ class WebsiteScraper:
             return self.dirs['webp']
         elif ext in ['.txt']:
             return self.dirs['txt']
-        elif ext in ['.php', '.py', '.js', '.rb', '.java', '.go', '.sh']:
+        elif ext in ['.php', '.py', '.js', '.rb', '.java', '.go', '.sh', '.cpp', '.c', '.cs', '.pl', '.r', '.swift', '.kt', '.scala', '.groovy']:
             return self.dirs['server']
         elif ext in ['.env', '.json', '.yaml', '.yml']:
             return self.dirs['config']
@@ -194,7 +194,8 @@ class WebsiteScraper:
             'txt': [],
             'api': [],
             'server': [],
-            'config': []
+            'config': [],
+            'manifest': []
         }
         
         for tag in soup.find_all('link', rel='stylesheet'):
@@ -250,7 +251,7 @@ class WebsiteScraper:
                 urls['webp'].append(urljoin(base_url, href))
             elif href.endswith('.txt'):
                 urls['txt'].append(urljoin(base_url, href))
-            elif href.endswith('.php') or href.endswith('.py') or href.endswith('.js') or href.endswith('.rb') or href.endswith('.java') or href.endswith('.go') or href.endswith('.sh'):
+            elif href.endswith('.php') or href.endswith('.py') or href.endswith('.js') or href.endswith('.rb') or href.endswith('.java') or href.endswith('.go') or href.endswith('.sh') or href.endswith('.cpp') or href.endswith('.c') or href.endswith('.cs') or href.endswith('.pl') or href.endswith('.r') or href.endswith('.swift') or href.endswith('.kt') or href.endswith('.scala') or href.endswith('.groovy'):
                 urls['server'].append(urljoin(base_url, href))
             elif href.endswith('.env') or href.endswith('.json') or href.endswith('.yaml') or href.endswith('.yml'):
                 urls['config'].append(urljoin(base_url, href))
@@ -260,6 +261,11 @@ class WebsiteScraper:
             href = tag['href']
             if href.startswith('/api/') or href.startswith('/v1/') or href.startswith('/v2/') or href.startswith('/v3/'):
                 urls['api'].append(urljoin(base_url, href))
+        
+        # Detect manifest.json
+        for tag in soup.find_all('link', href=True):
+            if tag.get('rel') == ['manifest']:
+                urls['manifest'].append(urljoin(base_url, tag['href']))
                 
         return urls
 
