@@ -195,7 +195,8 @@ class WebsiteScraper:
             'api': [],
             'server': [],
             'config': [],
-            'manifest': []
+            'manifest': [],
+            'license': []
         }
         
         for tag in soup.find_all('link', rel='stylesheet'):
@@ -266,7 +267,17 @@ class WebsiteScraper:
         for tag in soup.find_all('link', href=True):
             if tag.get('rel') == ['manifest']:
                 urls['manifest'].append(urljoin(base_url, tag['href']))
-                
+        
+        # Detect license files referenced in comments
+        for tag in soup.find_all('script', src=True):
+            js_url = urljoin(base_url, tag['src'])
+            js_response = self.session.get(js_url, proxies=self.get_proxy())
+            if js_response.status_code == 200:
+                license_matches = re.findall(r'LICENSE\.txt', js_response.text)
+                for match in license_matches:
+                    license_url = urljoin(js_url, match)
+                    urls['license'].append(license_url)
+        
         return urls
 
     def scrape_page(self, url: str, download_linked_pages: bool = False) -> None:
