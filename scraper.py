@@ -11,9 +11,12 @@ from tkinter import messagebox
 from fake_useragent import UserAgent
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+import time
+import random
+import threading
 
 class WebsiteScraper:
-    def __init__(self, base_url: str, output_dir: str):
+    def __init__(self, base_url: str, output_dir: str, proxies: List[str] = None):
         self.base_url = base_url
         self.output_dir = output_dir
         self.session = requests.Session()
@@ -46,7 +49,7 @@ class WebsiteScraper:
         self.session.headers.update({'User-Agent': self.user_agent.random})
         
         retry_strategy = Retry(
-            total=3,
+            total=5,
             backoff_factor=1,
             status_forcelist=[429, 500, 502, 503, 504],
             allowed_methods=["HEAD", "GET", "OPTIONS"]
@@ -54,6 +57,9 @@ class WebsiteScraper:
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("https://", adapter)
         self.session.mount("http://", adapter)
+        
+        self.proxies = proxies if proxies else []
+        self.proxy_index = 0
 
     def create_directories(self):
         for directory in self.dirs.values():
@@ -138,7 +144,7 @@ class WebsiteScraper:
         self.visited_urls.add(url)
         
         try:
-            response = self.session.get(url, timeout=10)
+            response = self.session.get(url, timeout=10, proxies=self.get_proxy())
             if response.status_code != 200:
                 print(f"Failed to download {url}: Status code {response.status_code}")
                 return False
@@ -259,7 +265,7 @@ class WebsiteScraper:
 
     def scrape_page(self, url: str, download_linked_pages: bool = False) -> None:
         try:
-            response = self.session.get(url)
+            response = self.session.get(url, proxies=self.get_proxy())
             soup = BeautifulSoup(response.text, 'html.parser')
             
             page_name = os.path.basename(urlparse(url).path) or 'index.html'
@@ -292,6 +298,13 @@ class WebsiteScraper:
         self.scrape_page(self.base_url, download_linked_pages)
         print(f"\nScraping complete. Files saved in {self.output_dir}")
         print(f"Total files downloaded: {len(self.visited_urls)}")
+
+    def get_proxy(self):
+        if self.proxies:
+            proxy = self.proxies[self.proxy_index]
+            self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
+            return {'http': proxy, 'https': proxy}
+        return None
 
 class ScraperUI:
     def __init__(self, root):
