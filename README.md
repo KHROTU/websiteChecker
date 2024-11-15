@@ -1,7 +1,6 @@
+# Website Checker
 
-# Website Scraper
-
-A Python script to scrape websites and download their resources (HTML, CSS, JS, images, etc.). The script also includes advanced features like user-agent spoofing, proxy rotation, and retry logic to ensure efficient and undetectable scraping.
+A Python script to scrape websites and download their resources (HTML, CSS, JS, images, etc.), and check for XSS/SQL/CSRF vulnerabilities. The script also includes advanced features like user-agent spoofing, proxy rotation, and retry logic to ensure efficient and undetectable scraping.
 
 ## Features
 
@@ -13,6 +12,11 @@ A Python script to scrape websites and download their resources (HTML, CSS, JS, 
 - **Tor IP Rotation**: Option to rotate Tor IP addresses for enhanced anonymity.
 - **Customizable Output Directories**: Organizes downloaded files into separate directories based on file types.
 - **Frontend and Backend Scraping**: Allows selective scraping of frontend (HTML, CSS, JS, etc.) or backend (server-side scripts, configurations, etc.) files.
+- **Advanced Anti-Detection Techniques**: Includes advanced techniques to mimic real user behavior and avoid detection.
+- **Efficient Resource Handling**: Implements resource deduplication and optimized parallel processing.
+- **Malicious Payloads**: Includes tools to test for XSS, SQL injection, directory traversal, CSRF, and file upload vulnerabilities.
+- **Stealthy Navigation**: Mimics human-like browsing patterns with random delays and actions.
+- **Error Handling and Resilience**: Advanced retry mechanisms and enhanced error logging for better analysis.
 
 ## Requirements
 
