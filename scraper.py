@@ -11,9 +11,6 @@ from tkinter import messagebox
 from fake_useragent import UserAgent
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
-import time
-import random
-import threading
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -153,7 +150,6 @@ class WebsiteScraper:
         try:
             response = self.session.get(url, timeout=10, proxies=self.get_proxy())
             if response.status_code == 403:
-                # Try different headers to bypass 403
                 headers = {
                     'User-Agent': self.user_agent.random,
                     'Referer': self.base_url,
@@ -277,18 +273,15 @@ class WebsiteScraper:
             elif href.endswith('.env') or href.endswith('.json') or href.endswith('.yaml') or href.endswith('.yml'):
                 urls['config'].append(urljoin(base_url, href))
                 
-        # Detect API endpoints
         for tag in soup.find_all('a', href=True):
             href = tag['href']
             if href.startswith('/api/') or href.startswith('/v1/') or href.startswith('/v2/') or href.startswith('/v3/'):
                 urls['api'].append(urljoin(base_url, href))
         
-        # Detect manifest.json
         for tag in soup.find_all('link', href=True):
             if tag.get('rel') == ['manifest']:
                 urls['manifest'].append(urljoin(base_url, tag['href']))
         
-        # Detect license files referenced in comments
         for tag in soup.find_all('script', src=True):
             js_url = urljoin(base_url, tag['src'])
             js_response = self.session.get(js_url, proxies=self.get_proxy())
