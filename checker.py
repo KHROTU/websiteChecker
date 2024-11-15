@@ -20,6 +20,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from stem import Signal
 from stem.control import Controller
+import random
+import time
+import threading
+import hashlib
 
 class WebsiteScraper:
     def __init__(self, base_url: str, output_dir: str, proxies: List[str] = None, captcha_api_key: str = None):
@@ -67,6 +71,7 @@ class WebsiteScraper:
         self.proxies = proxies if proxies else []
         self.proxy_index = 0
         self.captcha_solver = TwoCaptcha(captcha_api_key) if captcha_api_key else None
+        self.resource_hashes: Set[str] = set()
 
     def create_directories(self):
         for directory in self.dirs.values():
@@ -402,10 +407,148 @@ class WebsiteScraper:
             controller.authenticate(password='your_password')
             controller.signal(Signal.NEWNYM)
 
+    def check_resource_hash(self, content: bytes) -> bool:
+        content_hash = hashlib.md5(content).hexdigest()
+        if content_hash in self.resource_hashes:
+            return False
+        self.resource_hashes.add(content_hash)
+        return True
+
+    def download_file_with_hash(self, url: str, directory: str = None) -> bool:
+        if url in self.visited_urls:
+            return False
+            
+        self.visited_urls.add(url)
+        
+        try:
+            response = self.session.get(url, timeout=10, proxies=self.get_proxy())
+            if response.status_code == 403:
+                # Try different headers to bypass 403
+                headers = {
+                    'User-Agent': self.user_agent.random,
+                    'Referer': self.base_url,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1'
+                }
+                response = self.session.get(url, timeout=10, proxies=self.get_proxy(), headers=headers)
+            
+            if response.status_code != 200:
+                print(f"Failed to download {url}: Status code {response.status_code}")
+                return False
+
+            content_type = response.headers.get('content-type', '').lower()
+            
+            if directory is None:
+                directory = self.determine_directory(url, content_type)
+
+            filename = os.path.basename(urlparse(url).path)
+            if not filename:
+                ext = self.get_file_extension(url, content_type)
+                filename = f"file_{len(self.visited_urls)}{ext}"
+
+            filepath = os.path.join(directory, filename)
+            
+            mode = 'wb' if 'text' not in content_type else 'w'
+            with open(filepath, mode, encoding='utf-8' if mode == 'w' else None) as f:
+                if mode == 'w':
+                    f.write(response.text)
+                else:
+                    f.write(response.content)
+                    
+            print(f"Downloaded: {filename}")
+            return True
+            
+        except requests.exceptions.RequestException as e:
+            print(f"Error downloading {url}: {e}")
+            return False
+
+    def submit_form(self, url: str, form_data: Dict[str, str]) -> bool:
+        try:
+            response = self.session.post(url, data=form_data, proxies=self.get_proxy())
+            if response.status_code == 200:
+                print(f"Form submitted successfully to {url}")
+                return True
+            else:
+                print(f"Failed to submit form to {url}: Status code {response.status_code}")
+                return False
+        except requests.exceptions.RequestException as e:
+            print(f"Error submitting form to {url}: {e}")
+            return False
+
+    def test_xss(self, url: str, payload: str) -> bool:
+        try:
+            response = self.session.get(url, params={'q': payload}, proxies=self.get_proxy())
+            if payload in response.text:
+                print(f"XSS vulnerability detected at {url}")
+                return True
+            else:
+                print(f"No XSS vulnerability detected at {url}")
+                return False
+        except requests.exceptions.RequestException as e:
+            print(f"Error testing XSS at {url}: {e}")
+            return False
+
+    def test_sql_injection(self, url: str, payload: str) -> bool:
+        try:
+            response = self.session.get(url, params={'id': payload}, proxies=self.get_proxy())
+            if "error in your SQL syntax" in response.text:
+                print(f"SQL injection vulnerability detected at {url}")
+                return True
+            else:
+                print(f"No SQL injection vulnerability detected at {url}")
+                return False
+        except requests.exceptions.RequestException as e:
+            print(f"Error testing SQL injection at {url}: {e}")
+            return False
+
+    def test_directory_traversal(self, url: str, payload: str) -> bool:
+        try:
+            response = self.session.get(url, params={'file': payload}, proxies=self.get_proxy())
+            if "root:x:" in response.text:
+                print(f"Directory traversal vulnerability detected at {url}")
+                return True
+            else:
+                print(f"No directory traversal vulnerability detected at {url}")
+                return False
+        except requests.exceptions.RequestException as e:
+            print(f"Error testing directory traversal at {url}: {e}")
+            return False
+
+    def test_csrf(self, url: str, payload: str) -> bool:
+        try:
+            response = self.session.post(url, data={'csrf_token': payload}, proxies=self.get_proxy())
+            if response.status_code == 200:
+                print(f"CSRF vulnerability detected at {url}")
+                return True
+            else:
+                print(f"No CSRF vulnerability detected at {url}")
+                return False
+        except requests.exceptions.RequestException as e:
+            print(f"Error testing CSRF at {url}: {e}")
+            return False
+
+    def test_file_upload(self, url: str, file_path: str) -> bool:
+        try:
+            with open(file_path, 'rb') as f:
+                files = {'file': f}
+                response = self.session.post(url, files=files, proxies=self.get_proxy())
+            if response.status_code == 200:
+                print(f"File upload vulnerability detected at {url}")
+                return True
+            else:
+                print(f"No file upload vulnerability detected at {url}")
+                return False
+        except requests.exceptions.RequestException as e:
+            print(f"Error testing file upload at {url}: {e}")
+            return False
+
 class ScraperUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Website Scraper")
+        self.root.title("Website Checker")
         
         self.url_label = tk.Label(root, text="Website URL:")
         self.url_label.pack()
@@ -413,16 +556,24 @@ class ScraperUI:
         self.url_entry = tk.Entry(root, width=50)
         self.url_entry.pack()
         
-        self.frontend_var = tk.BooleanVar()
-        self.backend_var = tk.BooleanVar()
+        self.scrape_data_var = tk.BooleanVar()
+        self.xss_check_var = tk.BooleanVar()
+        self.sql_check_var = tk.BooleanVar()
+        self.csrf_check_var = tk.BooleanVar()
         
-        self.frontend_check = tk.Checkbutton(root, text="Scrape Frontend", variable=self.frontend_var)
-        self.frontend_check.pack()
+        self.scrape_data_check = tk.Checkbutton(root, text="Scrape Data", variable=self.scrape_data_var)
+        self.scrape_data_check.pack()
         
-        self.backend_check = tk.Checkbutton(root, text="Scrape Backend", variable=self.backend_var)
-        self.backend_check.pack()
+        self.xss_check = tk.Checkbutton(root, text="XSS Check", variable=self.xss_check_var)
+        self.xss_check.pack()
         
-        self.scrape_button = tk.Button(root, text="Start Scraping", command=self.start_scraping)
+        self.sql_check = tk.Checkbutton(root, text="SQL Check", variable=self.sql_check_var)
+        self.sql_check.pack()
+        
+        self.csrf_check = tk.Checkbutton(root, text="CSRF Check", variable=self.csrf_check_var)
+        self.csrf_check.pack()
+        
+        self.scrape_button = tk.Button(root, text="Start Getting Data", command=self.start_scraping)
         self.scrape_button.pack()
         
         self.output_text = tk.Text(root, height=10, width=50)
@@ -451,15 +602,23 @@ class ScraperUI:
         self.root.update()
         
         try:
-            if self.frontend_var.get():
+            if self.scrape_data_var.get():
                 scraper.scrape(download_linked_pages=True)
-            elif self.backend_var.get():
-                scraper.scrape(download_linked_pages=False)
-            else:
-                scraper.scrape(download_linked_pages=True)
+                self.output_text.insert(tk.END, f"\nScraping complete. Files saved in {output_directory}\n")
+                self.output_text.insert(tk.END, f"Total files downloaded: {len(scraper.visited_urls)}\n")
             
-            self.output_text.insert(tk.END, f"\nScraping complete. Files saved in {output_directory}\n")
-            self.output_text.insert(tk.END, f"Total files downloaded: {len(scraper.visited_urls)}\n")
+            if self.xss_check_var.get():
+                xss_result = scraper.test_xss(website_url, "<script>alert('XSS')</script>")
+                self.output_text.insert(tk.END, f"XSS Check: {'Vulnerable' if xss_result else 'Not Vulnerable'}\n")
+            
+            if self.sql_check_var.get():
+                sql_result = scraper.test_sql_injection(website_url, "1' OR '1'='1")
+                self.output_text.insert(tk.END, f"SQL Check: {'Vulnerable' if sql_result else 'Not Vulnerable'}\n")
+            
+            if self.csrf_check_var.get():
+                csrf_result = scraper.test_csrf(website_url, "invalid_csrf_token")
+                self.output_text.insert(tk.END, f"CSRF Check: {'Vulnerable' if csrf_result else 'Not Vulnerable'}\n")
+            
         except Exception as e:
             self.output_text.insert(tk.END, f"Error: {e}\n")
 
