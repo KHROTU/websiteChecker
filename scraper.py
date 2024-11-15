@@ -11,6 +11,8 @@ from tkinter import messagebox
 from fake_useragent import UserAgent
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+from playwright.sync_api import sync_playwright
+from twocaptcha import TwoCaptcha
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -20,7 +22,7 @@ from stem import Signal
 from stem.control import Controller
 
 class WebsiteScraper:
-    def __init__(self, base_url: str, output_dir: str, proxies: List[str] = None):
+    def __init__(self, base_url: str, output_dir: str, proxies: List[str] = None, captcha_api_key: str = None):
         self.base_url = base_url
         self.output_dir = output_dir
         self.session = requests.Session()
@@ -64,6 +66,7 @@ class WebsiteScraper:
         
         self.proxies = proxies if proxies else []
         self.proxy_index = 0
+        self.captcha_solver = TwoCaptcha(captcha_api_key) if captcha_api_key else None
 
     def create_directories(self):
         for directory in self.dirs.values():
@@ -150,6 +153,7 @@ class WebsiteScraper:
         try:
             response = self.session.get(url, timeout=10, proxies=self.get_proxy())
             if response.status_code == 403:
+                # Try different headers to bypass 403
                 headers = {
                     'User-Agent': self.user_agent.random,
                     'Referer': self.base_url,
@@ -273,15 +277,18 @@ class WebsiteScraper:
             elif href.endswith('.env') or href.endswith('.json') or href.endswith('.yaml') or href.endswith('.yml'):
                 urls['config'].append(urljoin(base_url, href))
                 
+        # Detect API endpoints
         for tag in soup.find_all('a', href=True):
             href = tag['href']
             if href.startswith('/api/') or href.startswith('/v1/') or href.startswith('/v2/') or href.startswith('/v3/'):
                 urls['api'].append(urljoin(base_url, href))
         
+        # Detect manifest.json
         for tag in soup.find_all('link', href=True):
             if tag.get('rel') == ['manifest']:
                 urls['manifest'].append(urljoin(base_url, tag['href']))
         
+        # Detect license files referenced in comments
         for tag in soup.find_all('script', src=True):
             js_url = urljoin(base_url, tag['src'])
             js_response = self.session.get(js_url, proxies=self.get_proxy())
@@ -336,53 +343,59 @@ class WebsiteScraper:
             return {'http': proxy, 'https': proxy}
         return None
 
-    def download_with_selenium(self, url: str, directory: str = None) -> bool:
+    def download_with_playwright(self, url: str, directory: str = None) -> bool:
         if url in self.visited_urls:
             return False
         
         self.visited_urls.add(url)
         
         try:
-            chrome_options = Options()
-            chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--disable-gpu")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument(f"user-agent={self.user_agent.random}")
-            
-            driver = webdriver.Chrome(options=chrome_options)
-            driver.get(url)
-            
-            WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'body')))
-            
-            content = driver.page_source
-            content_type = driver.execute_script("return document.contentType")
-            
-            driver.quit()
-            
-            if directory is None:
-                directory = self.determine_directory(url, content_type)
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context(user_agent=self.user_agent.random)
+                page = context.new_page()
+                page.goto(url)
+                
+                content = page.content()
+                content_type = page.evaluate("document.contentType")
+                
+                browser.close()
+                
+                if directory is None:
+                    directory = self.determine_directory(url, content_type)
 
-            filename = os.path.basename(urlparse(url).path)
-            if not filename:
-                ext = self.get_file_extension(url, content_type)
-                filename = f"file_{len(self.visited_urls)}{ext}"
+                filename = os.path.basename(urlparse(url).path)
+                if not filename:
+                    ext = self.get_file_extension(url, content_type)
+                    filename = f"file_{len(self.visited_urls)}{ext}"
 
-            filepath = os.path.join(directory, filename)
-            
-            mode = 'wb' if 'text' not in content_type else 'w'
-            with open(filepath, mode, encoding='utf-8' if mode == 'w' else None) as f:
-                if mode == 'w':
-                    f.write(content)
-                else:
-                    f.write(content.encode('utf-8'))
-                    
-            print(f"Downloaded: {filename}")
-            return True
-            
+                filepath = os.path.join(directory, filename)
+                
+                mode = 'wb' if 'text' not in content_type else 'w'
+                with open(filepath, mode, encoding='utf-8' if mode == 'w' else None) as f:
+                    if mode == 'w':
+                        f.write(content)
+                    else:
+                        f.write(content.encode('utf-8'))
+                        
+                print(f"Downloaded: {filename}")
+                return True
+                
         except Exception as e:
             print(f"Error downloading {url}: {e}")
             return False
+
+    def solve_captcha(self, page):
+        if self.captcha_solver:
+            captcha_element = page.query_selector('img[alt="captcha"]')
+            if captcha_element:
+                captcha_url = captcha_element.get_attribute('src')
+                captcha_response = self.captcha_solver.solve_captcha(captcha_url)
+                if captcha_response:
+                    page.fill('input[name="captcha"]', captcha_response)
+                    page.click('button[type="submit"]')
+                    return True
+        return False
 
     def change_tor_ip(self):
         with Controller.from_port(port=9051) as controller:
@@ -421,7 +434,16 @@ class ScraperUI:
             messagebox.showerror("Error", "Please enter a website URL.")
             return
         
-        website_name = urlparse(website_url).netloc.split('.')[-2]
+        try:
+            parsed_url = urlparse(website_url)
+            if not all([parsed_url.scheme, parsed_url.netloc]):
+                messagebox.showerror("Error", "Not a valid URL.")
+                return
+        except ValueError:
+            messagebox.showerror("Error", "Not a valid URL.")
+            return
+        
+        website_name = parsed_url.netloc.split('.')[-2]
         output_directory = f"{website_name}_website_files"
         scraper = WebsiteScraper(website_url, output_directory)
         
