@@ -10,20 +10,21 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from fake_useragent import UserAgent
 from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
+from urllib3.util.retry import Retry  # Updated import
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
 from playwright.sync_api import sync_playwright
 from twocaptcha import TwoCaptcha
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from stem import Signal
 from stem.control import Controller
-import random
-import time
-import threading
 import hashlib
+import ssl
+import urllib3
+
+# Suppress the InsecureRequestWarning
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class WebsiteScraper:
     def __init__(self, base_url: str, output_dir: str, proxies: List[str] = None, captcha_api_key: str = None):
@@ -72,6 +73,10 @@ class WebsiteScraper:
         self.proxy_index = 0
         self.captcha_solver = TwoCaptcha(captcha_api_key) if captcha_api_key else None
         self.resource_hashes: Set[str] = set()
+
+        # Add custom SSL context to bypass SSL verification
+        self.session.verify = False
+        self.session.trust_env = False
 
     def create_directories(self):
         for directory in self.dirs.values():
