@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from fake_useragent import UserAgent
 from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry  # Updated import
+from urllib3.util.retry import Retry
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -23,7 +23,6 @@ import hashlib
 import ssl
 import urllib3
 
-# Suppress the InsecureRequestWarning
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class WebsiteScraper:
@@ -74,7 +73,6 @@ class WebsiteScraper:
         self.captcha_solver = TwoCaptcha(captcha_api_key) if captcha_api_key else None
         self.resource_hashes: Set[str] = set()
 
-        # Add custom SSL context to bypass SSL verification
         self.session.verify = False
         self.session.trust_env = False
 
@@ -163,7 +161,6 @@ class WebsiteScraper:
         try:
             response = self.session.get(url, timeout=10, proxies=self.get_proxy())
             if response.status_code == 403:
-                # Try different headers to bypass 403
                 headers = {
                     'User-Agent': self.user_agent.random,
                     'Referer': self.base_url,
